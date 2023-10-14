@@ -21,19 +21,23 @@
 
 #include "platform.h"
 #include "utils/module.h"
+#include "gameconfig.h"
 
 class CMemPatch
 {
 public:
-    CMemPatch(CModule **pModule, const byte *pSignature, const byte *pPatch, const char *pszName, int iRepeat = 1) :
-		m_pModule(pModule), m_pSignature(pSignature), m_pPatch(pPatch), m_pszName(pszName), m_iRepeat(iRepeat)
+	CMemPatch(const char *pszName, int iRepeat = 1) :
+		m_pszName(pszName), m_iRepeat(iRepeat)
 	{
+		m_pModule = nullptr;
 		m_pPatchAddress = nullptr;
-        m_pOriginalBytes = nullptr;
-		m_iPatchLength = V_strlen((char*)m_pPatch);
+		m_pOriginalBytes = nullptr;
+		m_pSignature = nullptr;
+		m_pPatch = nullptr;
+		m_iPatchLength = 0;
 	}
 
-	void PerformPatch();
+	bool PerformPatch(CGameConfig *gameConfig);
 	void UndoPatch();
 
 	void *GetPatchAddress() { return m_pPatchAddress; }
