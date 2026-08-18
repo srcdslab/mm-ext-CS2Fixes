@@ -37,14 +37,14 @@ jobs:
             container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: CS2Fixes
           submodules: recursive
           fetch-depth: 0
 
       - name: Checkout Metamod
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           ref: master
@@ -52,7 +52,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout AMBuild
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/ambuild
           path: ambuild
