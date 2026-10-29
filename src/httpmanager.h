@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * Original code from D2Lobby2
  * Copyright (C) 2023 Nicholas Hastings
  * =============================================================================
@@ -37,10 +37,8 @@
 
 using json = nlohmann::json;
 
-class HTTPManager;
-extern HTTPManager g_HTTPManager;
-
 #define CompletedCallback std::function<void(HTTPRequestHandle, json)>
+#define ErrorCallback std::function<void(HTTPRequestHandle, EHTTPStatusCode, json)>
 
 class HTTPHeader
 {
@@ -61,8 +59,21 @@ private:
 class HTTPManager
 {
 public:
-	void GET(const char* pszUrl, CompletedCallback callback, std::vector<HTTPHeader>* headers = nullptr);
-	void POST(const char* pszUrl, const char* pszText, CompletedCallback callback, std::vector<HTTPHeader>* headers = nullptr);
+	void Get(std::string strUrl, CompletedCallback callbackCompleted,
+			 ErrorCallback callbackError = nullptr, std::vector<HTTPHeader>* headers = nullptr,
+			 int absoluteTimeoutMs = 0);
+	void Post(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+			  ErrorCallback callbackError = nullptr, std::vector<HTTPHeader>* headers = nullptr,
+			  int absoluteTimeoutMs = 0);
+	void Put(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+			 ErrorCallback callbackError = nullptr, std::vector<HTTPHeader>* headers = nullptr,
+			 int absoluteTimeoutMs = 0);
+	void Patch(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+			   ErrorCallback callbackError = nullptr, std::vector<HTTPHeader>* headers = nullptr,
+			   int absoluteTimeoutMs = 0);
+	void Delete(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+				ErrorCallback callbackError = nullptr, std::vector<HTTPHeader>* headers = nullptr,
+				int absoluteTimeoutMs = 0);
 	bool HasAnyPendingRequests() const { return m_PendingRequests.size() > 0; }
 
 private:
@@ -70,7 +81,9 @@ private:
 	{
 	public:
 		TrackedRequest(const TrackedRequest& req) = delete;
-		TrackedRequest(HTTPRequestHandle hndl, SteamAPICall_t hCall, std::string strUrl, std::string strText, CompletedCallback callback);
+		TrackedRequest(HTTPRequestHandle hndl, SteamAPICall_t hCall, std::string strUrl,
+					   std::string strText, CompletedCallback callbackCompleted,
+					   ErrorCallback callbackError);
 		~TrackedRequest();
 
 	private:
@@ -80,10 +93,15 @@ private:
 		CCallResult<TrackedRequest, HTTPRequestCompleted_t> m_CallResult;
 		std::string m_strUrl;
 		std::string m_strText;
-		CompletedCallback m_callback;
+		CompletedCallback m_callbackCompleted;
+		ErrorCallback m_callbackError;
 	};
 
 private:
 	std::vector<HTTPManager::TrackedRequest*> m_PendingRequests;
-	void GenerateRequest(EHTTPMethod method, const char* pszUrl, const char* pszText, CompletedCallback callback, std::vector<HTTPHeader>* headers);
+	void GenerateRequest(EHTTPMethod method, std::string strUrl, std::string strText,
+						 CompletedCallback callbackCompleted, ErrorCallback callbackError,
+						 std::vector<HTTPHeader>* headers, int absoluteTimeoutMs = 0);
 };
+
+extern HTTPManager g_HTTPManager;

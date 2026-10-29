@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -22,7 +22,7 @@
 #include "common.h"
 #include "entity/cvotecontroller.h"
 #include "eventlistener.h"
-#include "irecipientfilter.h"
+#include "recipientfilters.h"
 #include "utils/entity.h"
 
 #define VOTE_CALLER_SERVER 99
@@ -56,12 +56,12 @@ enum YesNoVoteAction
 #define VOTEINFO_CLIENT_ITEM 1
 struct YesNoVoteInfo
 {
-	int num_votes;				   // Number of votes tallied in total
-	int yes_votes;				   // Number of votes for yes
-	int no_votes;				   // Number of votes for no
-	int num_clients;			   // Number of clients who could vote
-	int clientInfo[MAXPLAYERS][2]; // Client voting info, user VOTEINFO_CLIENT_ defines
-								   //     Anything >= [num_clients] is VOTE_NOTINCLUDED, VOTE_UNCAST = client didn't vote
+	int num_votes;					// Number of votes tallied in total
+	int yes_votes;					// Number of votes for yes
+	int no_votes;					// Number of votes for no
+	int num_clients;				// Number of clients who could vote
+	int clientInfo[MAX_PLAYERS][2]; // Client voting info, user VOTEINFO_CLIENT_ defines
+									//     Anything >= [num_clients] is VOTE_NOTINCLUDED, VOTE_UNCAST = client didn't vote
 };
 
 // Used to handle events relating to the vote menu
@@ -113,7 +113,7 @@ public:
 	 *  @param handler			Called when a menu action is completed.
 	 *  @param callback			Called when the vote has finished.
 	 */
-	bool SendYesNoVote(float flDuration, int iCaller, const char* sVoteTitle, const char* sDetailStr, IRecipientFilter* pFilter, YesNoVoteResult resultCallback, YesNoVoteHandler handler);
+	bool SendYesNoVote(float flDuration, int iCaller, const char* sVoteTitle, const char* sDetailStr, CRecipientFilter* pFilter, YesNoVoteResult resultCallback, YesNoVoteHandler handler);
 
 	/* Start a new Yes/No vote with all players included
 	 *
@@ -135,14 +135,14 @@ private:
 	YesNoVoteHandler m_VoteHandler;
 	YesNoVoteResult m_VoteResult;
 	int m_iVoterCount;
-	int m_iVoters[MAXPLAYERS];
+	int m_iVoters[MAX_PLAYERS];
 
 	int m_iCurrentVoteCaller;
 	char m_szCurrentVoteTitle[256];
 	char m_szCurrentVoteDetailStr[256];
 
 	void CheckForEarlyVoteClose();
-	void InitVoters(IRecipientFilter* pFilter);
+	void InitVoters(CRecipientFilter* pFilter);
 	void SendVoteStartUM(IRecipientFilter* pFilter);
 	void UpdateVoteCounts();
 };

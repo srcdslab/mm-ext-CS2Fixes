@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * Original code from D2Lobby2
  * Copyright (C) 2023 Nicholas Hastings
  * =============================================================================
@@ -30,13 +30,13 @@
 #include "vendor/nlohmann/json.hpp"
 #include <string>
 
-extern ISteamHTTP* g_http;
-
 HTTPManager g_HTTPManager;
 
 #undef strdup
 
-HTTPManager::TrackedRequest::TrackedRequest(HTTPRequestHandle hndl, SteamAPICall_t hCall, std::string strUrl, std::string strText, CompletedCallback callback)
+HTTPManager::TrackedRequest::TrackedRequest(HTTPRequestHandle hndl, SteamAPICall_t hCall,
+											std::string strUrl, std::string strText,
+											CompletedCallback callbackCompleted, ErrorCallback callbackError)
 {
 	m_hHTTPReq = hndl;
 	m_CallResult.SetGameserverFlag();
@@ -44,7 +44,8 @@ HTTPManager::TrackedRequest::TrackedRequest(HTTPRequestHandle hndl, SteamAPICall
 
 	m_strUrl = strUrl;
 	m_strText = strText;
-	m_callback = callback;
+	m_callbackCompleted = callbackCompleted;
+	m_callbackError = callbackError;
 
 	g_HTTPManager.m_PendingRequests.push_back(this);
 }
@@ -63,17 +64,24 @@ HTTPManager::TrackedRequest::~TrackedRequest()
 
 void HTTPManager::TrackedRequest::OnHTTPRequestCompleted(HTTPRequestCompleted_t* arg, bool bFailed)
 {
-	if (bFailed || arg->m_eStatusCode < 200 || arg->m_eStatusCode > 299)
+	bool bTransportError = bFailed || !arg->m_bRequestSuccessful;
+	bool bHTTPError = arg->m_eStatusCode < 200 || arg->m_eStatusCode > 299;
+
+	if (bTransportError && m_callbackError)
+	{
+		m_callbackError(arg->m_hRequest, k_EHTTPStatusCodeInvalid, json());
+	}
+	else if (bTransportError || (bHTTPError && !m_callbackError))
 	{
 		Message("HTTP request to %s failed with status code %i\n", m_strUrl.c_str(), arg->m_eStatusCode);
 	}
 	else
 	{
 		uint32 size;
-		g_http->GetHTTPResponseBodySize(arg->m_hRequest, &size);
+		GetSteamHTTP()->GetHTTPResponseBodySize(arg->m_hRequest, &size);
 
 		uint8* response = new uint8[size + 1];
-		g_http->GetHTTPResponseBodyData(arg->m_hRequest, response, size);
+		GetSteamHTTP()->GetHTTPResponseBodyData(arg->m_hRequest, response, size);
 		response[size] = 0; // Add null terminator
 
 		json jsonResponse;
@@ -85,56 +93,120 @@ void HTTPManager::TrackedRequest::OnHTTPRequestCompleted(HTTPRequestCompleted_t*
 
 			if (jsonResponse.is_discarded())
 				Message("Failed parsing JSON from HTTP response: %s\n", (char*)response);
-			else
-				m_callback(arg->m_hRequest, jsonResponse);
 		}
-		else
+
+		if (!jsonResponse.is_discarded() && bHTTPError)
+			m_callbackError(arg->m_hRequest, arg->m_eStatusCode, jsonResponse);
+		else if (bHTTPError)
 		{
-			// If empty response (Discord..), just treat it as a successful empty JSON object
-			m_callback(arg->m_hRequest, jsonResponse);
+			// Allow error callback even if invalid json, since error code can provide useful info
+			m_callbackError(arg->m_hRequest, arg->m_eStatusCode, json());
 		}
+		else if (!jsonResponse.is_discarded() && m_callbackCompleted)
+			m_callbackCompleted(arg->m_hRequest, jsonResponse);
 
 		delete[] response;
 	}
 
-	if (g_http)
-		g_http->ReleaseHTTPRequest(arg->m_hRequest);
+	if (GetSteamHTTP())
+		GetSteamHTTP()->ReleaseHTTPRequest(arg->m_hRequest);
 
 	delete this;
 }
 
-void HTTPManager::GET(const char* pszUrl, CompletedCallback callback, std::vector<HTTPHeader>* headers)
+void HTTPManager::Get(std::string strUrl, CompletedCallback callbackCompleted,
+					  ErrorCallback callbackError, std::vector<HTTPHeader>* headers,
+					  int absoluteTimeoutMs)
 {
-	GenerateRequest(k_EHTTPMethodGET, pszUrl, "", callback, headers);
+	GenerateRequest(k_EHTTPMethodGET, strUrl, "", callbackCompleted, callbackError, headers, absoluteTimeoutMs);
 }
 
-void HTTPManager::POST(const char* pszUrl, const char* pszText, CompletedCallback callback, std::vector<HTTPHeader>* headers)
+void HTTPManager::Post(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+					   ErrorCallback callbackError, std::vector<HTTPHeader>* headers,
+					   int absoluteTimeoutMs)
 {
-	GenerateRequest(k_EHTTPMethodPOST, pszUrl, pszText, callback, headers);
+	GenerateRequest(k_EHTTPMethodPOST, strUrl, strText, callbackCompleted, callbackError, headers, absoluteTimeoutMs);
 }
 
-void HTTPManager::GenerateRequest(EHTTPMethod method, const char* pszUrl, const char* pszText, CompletedCallback callback, std::vector<HTTPHeader>* headers)
+void HTTPManager::Put(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+					  ErrorCallback callbackError, std::vector<HTTPHeader>* headers,
+					  int absoluteTimeoutMs)
 {
-	// Message("Sending HTTP:\n%s\n", pszText);
-	auto hReq = g_http->CreateHTTPRequest(method, pszUrl);
-	int size = strlen(pszText);
-	// Message("HTTP request: %p\n", hReq);
+	GenerateRequest(k_EHTTPMethodPUT, strUrl, strText, callbackCompleted, callbackError, headers, absoluteTimeoutMs);
+}
 
-	if (method == k_EHTTPMethodPOST && !g_http->SetHTTPRequestRawPostBody(hReq, "application/json", (uint8*)pszText, size))
+void HTTPManager::Patch(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+						ErrorCallback callbackError, std::vector<HTTPHeader>* headers, int absoluteTimeoutMs)
+{
+	GenerateRequest(k_EHTTPMethodPATCH, strUrl, strText, callbackCompleted, callbackError, headers, absoluteTimeoutMs);
+}
+
+void HTTPManager::Delete(std::string strUrl, std::string strText, CompletedCallback callbackCompleted,
+						 ErrorCallback callbackError, std::vector<HTTPHeader>* headers, int absoluteTimeoutMs)
+{
+	GenerateRequest(k_EHTTPMethodDELETE, strUrl, strText, callbackCompleted, callbackError, headers, absoluteTimeoutMs);
+}
+
+void HTTPManager::GenerateRequest(EHTTPMethod method, std::string strUrl, std::string strText,
+								  CompletedCallback callbackCompleted, ErrorCallback callbackError,
+								  std::vector<HTTPHeader>* headers, int absoluteTimeoutMs)
+{
+	if (!GetSteamHTTP())
 	{
-		// Message("Failed to SetHTTPRequestRawPostBody\n");
+		Panic("A web request for %s was attempted on null ISteamHTTP, returning early.\n", strUrl.c_str());
 		return;
 	}
 
-	// Prevent HTTP error 411 (probably not necessary?)
-	// g_http->SetHTTPRequestHeaderValue(hReq, "Content-Length", std::to_string(size).c_str());
+#ifdef _DEBUG
+	Message("Sending HTTP:\n%s\n", strText.c_str());
+#endif
+
+	HTTPRequestHandle hReq = GetSteamHTTP()->CreateHTTPRequest(method, strUrl.c_str());
+	if (hReq == INVALID_HTTPREQUEST_HANDLE)
+	{
+		Panic("Failed to CreateHTTPRequest for %s\n", strUrl.c_str());
+		return;
+	}
+
+	bool shouldHaveBody = method == k_EHTTPMethodPOST
+						  || method == k_EHTTPMethodPATCH
+						  || method == k_EHTTPMethodPUT
+						  || method == k_EHTTPMethodDELETE;
+
+	if (shouldHaveBody && !GetSteamHTTP()->SetHTTPRequestRawPostBody(hReq, "application/json", (uint8*)(strText.c_str()), strText.length()))
+	{
+		Panic("Failed to SetHTTPRequestRawPostBody for %s\n", strUrl.c_str());
+		GetSteamHTTP()->ReleaseHTTPRequest(hReq);
+		return;
+	}
 
 	if (headers != nullptr)
+	{
 		for (HTTPHeader header : *headers)
-			g_http->SetHTTPRequestHeaderValue(hReq, header.GetName(), header.GetValue());
+		{
+			if (!GetSteamHTTP()->SetHTTPRequestHeaderValue(hReq, header.GetName(), header.GetValue()))
+			{
+				Panic("Failed to SetHTTPRequestHeaderValue for %s\n", strUrl.c_str());
+				GetSteamHTTP()->ReleaseHTTPRequest(hReq);
+				return;
+			}
+		}
+	}
+
+	if (absoluteTimeoutMs != 0 && !GetSteamHTTP()->SetHTTPRequestAbsoluteTimeoutMS(hReq, static_cast<uint32_t>(absoluteTimeoutMs)))
+	{
+		Panic("Failed to SetHTTPRequestAbsoluteTimeoutMS for %s\n", strUrl.c_str());
+		GetSteamHTTP()->ReleaseHTTPRequest(hReq);
+		return;
+	}
 
 	SteamAPICall_t hCall;
-	g_http->SendHTTPRequest(hReq, &hCall);
+	if (!GetSteamHTTP()->SendHTTPRequest(hReq, &hCall))
+	{
+		Panic("Failed to SendHTTPRequest for %s\n", strUrl.c_str());
+		GetSteamHTTP()->ReleaseHTTPRequest(hReq);
+		return;
+	}
 
-	new TrackedRequest(hReq, hCall, pszUrl, pszText, callback);
+	new TrackedRequest(hReq, hCall, strUrl, strText, callbackCompleted, callbackError);
 }

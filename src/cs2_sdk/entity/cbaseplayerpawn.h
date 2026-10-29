@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -19,11 +19,10 @@
 
 #pragma once
 
+#include "../entwatch.h"
 #include "cbaseentity.h"
 #include "cbasemodelentity.h"
 #include "services.h"
-
-extern bool g_bDropMapWeapons;
 
 class CBasePlayerPawn : public CBaseModelEntity
 {
@@ -46,28 +45,60 @@ public:
 			return;
 
 		CUtlVector<CHandle<CBasePlayerWeapon>>* weapons = m_pWeaponServices()->m_hMyWeapons();
+		std::vector<CBasePlayerWeapon*> vecWeaponsToDrop;
 
-		FOR_EACH_VEC(*weapons, i)
+		for (const auto& hWeapon : *weapons)
 		{
-			CBasePlayerWeapon* pWeapon = (*weapons)[i].Get();
+			CBasePlayerWeapon* pWeapon = hWeapon.Get();
 
 			if (!pWeapon)
 				continue;
 
 			// If this is a map-spawned weapon (items), drop it
 			if (V_strcmp(pWeapon->m_sUniqueHammerID().Get(), "") && pWeapon->GetWeaponVData()->m_GearSlot() != GEAR_SLOT_KNIFE)
-				m_pWeaponServices()->DropWeapon(pWeapon);
+			{
+				// Queue for dropping after, don't modify this vector while we're iterating it
+				vecWeaponsToDrop.push_back(pWeapon);
+			}
+		}
+
+		Vector pos = GetEyePosition();
+		for (CBasePlayerWeapon* pWeapon : vecWeaponsToDrop)
+		{
+			m_pWeaponServices()->DropWeapon(pWeapon);
+
+			CHandle<CBasePlayerWeapon> hWep = pWeapon->GetHandle();
+			CTimer::Create(0.0, TIMERFLAG_MAP | TIMERFLAG_ROUND, [hWep, pos] {
+				CBasePlayerWeapon* pWep = hWep.Get();
+				if (pWep)
+					pWep->Teleport(&pos, nullptr, nullptr);
+				return -1.0f;
+			});
 		}
 	}
 
 	void CommitSuicide(bool bExplode, bool bForce)
 	{
 		// CommitSuicide doesn't go through OnTakeDamage_Alive
-		if (g_bDropMapWeapons)
+		if (g_cvarDropMapWeapons.Get())
+		{
+			if (g_cvarEnableEntWatch.Get())
+			{
+				CCSPlayerController* pController = reinterpret_cast<CCSPlayerController*>(m_hController().Get());
+				if (pController)
+					EW_PlayerDeathPre(pController);
+			}
+
 			DropMapWeapons();
+		}
 
 		static int offset = g_GameConfig->GetOffset("CBasePlayerPawn_CommitSuicide");
 		CALL_VIRTUAL(void, offset, this, bExplode, bForce);
+	}
+
+	void SnapViewAngles(QAngle* pAngles)
+	{
+		addresses::CBasePlayerPawn_SnapViewAngles(this, pAngles);
 	}
 
 	CBasePlayerController* GetController() { return m_hController.Get(); }

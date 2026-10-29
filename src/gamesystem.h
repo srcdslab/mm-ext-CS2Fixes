@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -20,16 +20,56 @@
 
 #include "common.h"
 #include "entitysystem.h"
+
+// Stupid, but hopefully temporary hack
+#define private public
+#define protected public
 #include "igamesystemfactory.h"
+#undef protected
+#undef private
 
 bool InitGameSystems();
+bool UnregisterGameSystem();
+
+template <class T, class U = T>
+class CGameSystemStaticCustomFactory final : public CGameSystemStaticFactory<T, U>
+{
+public:
+	CGameSystemStaticCustomFactory(const char* pName, T* pActualGlobal, U** ppGlobalPointer = nullptr) :
+		CGameSystemStaticFactory<T, U>(pName, pActualGlobal, ppGlobalPointer)
+	{
+	}
+
+	void Destroy()
+	{
+		CBaseGameSystemFactory* pFactoryCurrent = *CBaseGameSystemFactory::sm_pFirst;
+		CBaseGameSystemFactory* pFactoryPrevious = nullptr;
+		while (pFactoryCurrent)
+		{
+			if (strcmp(pFactoryCurrent->m_pName, this->m_pName) == 0)
+			{
+				if (pFactoryPrevious == nullptr)
+					*CBaseGameSystemFactory::sm_pFirst = pFactoryCurrent->m_pNext;
+				else
+					pFactoryPrevious->m_pNext = pFactoryCurrent->m_pNext;
+				delete this;
+				return;
+			}
+			pFactoryPrevious = pFactoryCurrent;
+			pFactoryCurrent = pFactoryCurrent->m_pNext;
+		}
+	}
+};
 
 class CGameSystem : public CBaseGameSystem
 {
 public:
+	DECLARE_GAME_SYSTEM();
 	GS_EVENT(BuildGameSessionManifest);
 	GS_EVENT(ServerPreEntityThink);
 	GS_EVENT(ServerPostEntityThink);
+	GS_EVENT(GameShutdown);
+	GS_EVENT(PostSpawnGroupLoad);
 
 	void Shutdown() override
 	{
@@ -48,23 +88,25 @@ public:
 		return sm_Factory->ShouldAutoAdd();
 	}
 
-	static IGameSystemFactory* sm_Factory;
+	static CGameSystemStaticCustomFactory<CGameSystem>* sm_Factory;
 };
 
-// Quick and dirty definition
-// MSVC for whatever reason flips overload ordering, and this has three of them
-// So this is based on the linux bin which is correct, and MSVC will flip it to match the windows bin, fun
-class IEntityResourceManifest
+extern CGameSystem g_GameSystem;
+
+abstract_class IGameSystemEventDispatcher{
+	public :
+		virtual ~IGameSystemEventDispatcher(){}
+};
+
+class CGameSystemEventDispatcher : public IGameSystemEventDispatcher
 {
 public:
-	virtual void AddResource(const char*) = 0;
-	virtual void AddResource(const char*, void*) = 0;
-	virtual void AddResource(const char*, void*, void*, void*) = 0;
-	virtual void unk_04() = 0;
-	virtual void unk_05() = 0;
-	virtual void unk_06() = 0;
-	virtual void unk_07() = 0;
-	virtual void unk_08() = 0;
-	virtual void unk_09() = 0;
-	virtual void unk_10() = 0;
+	CUtlVector<CUtlVector<IGameSystem*>>* m_funcListeners;
+};
+
+struct AddedGameSystem_t
+{
+	IGameSystem* m_pGameSystem;
+	int m_nPriority;
+	int m_nInsertionOrder;
 };
