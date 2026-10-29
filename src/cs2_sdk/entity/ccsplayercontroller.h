@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -20,13 +20,9 @@
 #pragma once
 
 #include "../playermanager.h"
-#include "../serversideclient.h"
 #include "cbaseplayercontroller.h"
+#include "engine2/serversideclient.h"
 #include "services.h"
-
-extern CServerSideClient* GetClientBySlot(CPlayerSlot slot);
-
-extern CGameEntitySystem* g_pEntitySystem;
 
 class CCSPlayerController : public CBasePlayerController
 {
@@ -37,7 +33,6 @@ public:
 	SCHEMA_FIELD(CCSPlayerController_ActionTrackingServices*, m_pActionTrackingServices)
 	SCHEMA_FIELD(uint32_t, m_iPing)
 	SCHEMA_FIELD(CUtlSymbolLarge, m_szClan)
-	SCHEMA_FIELD_POINTER(char, m_szClanName) // char m_szClanName[32]
 	SCHEMA_FIELD(bool, m_bEverFullyConnected)
 	SCHEMA_FIELD(bool, m_bPawnIsAlive)
 	SCHEMA_FIELD(int32_t, m_nDisconnectionTick)
@@ -51,6 +46,10 @@ public:
 	SCHEMA_FIELD(int32_t, m_iRoundsWon)
 	SCHEMA_FIELD(int32_t, m_iMVPs)
 	SCHEMA_FIELD(float, m_flSmoothedPing)
+	SCHEMA_FIELD(bool, m_bMvpNoMusic)
+	SCHEMA_FIELD(int32_t, m_eMvpReason)
+	SCHEMA_FIELD(int32_t, m_iMusicKitID)
+	SCHEMA_FIELD(int32_t, m_iMusicKitMVPs)
 
 	static CCSPlayerController* FromPawn(CCSPlayerPawn* pawn)
 	{
@@ -80,13 +79,12 @@ public:
 
 	bool IsBot()
 	{
-		return m_fFlags() & FL_CONTROLLER_FAKECLIENT;
+		return m_fFlags() & FL_FAKECLIENT;
 	}
 
 	void ChangeTeam(int iTeam)
 	{
-		static int offset = g_GameConfig->GetOffset("CCSPlayerController_ChangeTeam");
-		CALL_VIRTUAL(void, offset, this, iTeam);
+		addresses::ChangeTeam(this, iTeam);
 	}
 
 	void SwitchTeam(int iTeam)
@@ -146,6 +144,28 @@ public:
 
 	void AddScore(int iScore)
 	{
-		m_iScore() = m_iScore() + iScore;
+		m_iScore = m_iScore() + iScore;
+	}
+
+	void SetClanTag(const char* pszClanTag)
+	{
+		const char* pszCurrentClanTag = m_szClan().String();
+		ZEPlayer* pPlayer = GetZEPlayer();
+
+		if (!V_strcmp(pszCurrentClanTag, pszClanTag) || !pPlayer)
+			return;
+
+		if (!pPlayer->IsOriginalClanTagSaved())
+			pPlayer->SetOriginalClanTag(pszCurrentClanTag);
+
+		m_szClan = g_pEntitySystem->AllocPooledString(pszClanTag);
+	}
+
+	void ResetClanTag()
+	{
+		ZEPlayer* pPlayer = GetZEPlayer();
+
+		if (pPlayer && pPlayer->IsOriginalClanTagSaved())
+			SetClanTag(pPlayer->GetOriginalClanTag().c_str());
 	}
 };

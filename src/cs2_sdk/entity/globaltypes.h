@@ -1,7 +1,7 @@
-/**
+﻿/**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -18,37 +18,11 @@
  */
 
 #pragma once
+#include "networktransmitcomponent.h"
 #include "schema.h"
+#include "shareddefs.h"
 #include "soundflags.h"
 #include <platform.h>
-
-enum InputBitMask_t : uint64_t
-{
-	// MEnumeratorIsNotAFlag
-	IN_NONE = 0x0,
-	// MEnumeratorIsNotAFlag
-	IN_ALL = 0xffffffffffffffff,
-	IN_ATTACK = 0x1,
-	IN_JUMP = 0x2,
-	IN_DUCK = 0x4,
-	IN_FORWARD = 0x8,
-	IN_BACK = 0x10,
-	IN_USE = 0x20,
-	IN_TURNLEFT = 0x80,
-	IN_TURNRIGHT = 0x100,
-	IN_MOVELEFT = 0x200,
-	IN_MOVERIGHT = 0x400,
-	IN_ATTACK2 = 0x800,
-	IN_RELOAD = 0x2000,
-	IN_SPEED = 0x10000,
-	IN_JOYAUTOSPRINT = 0x20000,
-	// MEnumeratorIsNotAFlag
-	IN_FIRST_MOD_SPECIFIC_BIT = 0x100000000,
-	IN_USEORRELOAD = 0x100000000,
-	IN_SCORE = 0x200000000,
-	IN_ZOOM = 0x400000000,
-	IN_LOOK_AT_WEAPON = 0x800000000,
-};
 
 enum EInButtonState : uint32_t
 {
@@ -85,94 +59,22 @@ enum ParticleAttachment_t : uint32_t
 	MAX_PATTACH_TYPES = 0x10,
 };
 
-enum ObserverMode_t : uint8_t
-{
-	OBS_MODE_NONE = 0x0,
-	OBS_MODE_FIXED = 0x1,
-	OBS_MODE_IN_EYE = 0x2,
-	OBS_MODE_CHASE = 0x3,
-	OBS_MODE_ROAMING = 0x4,
-	OBS_MODE_DIRECTED = 0x5,
-	NUM_OBSERVER_MODES = 0x6,
-};
-
 typedef uint32 SoundEventGuid_t;
 struct SndOpEventGuid_t
 {
 	SoundEventGuid_t m_nGuid;
-	uint64 m_hStackHash;
+	uint32 m_hStackHash;
 };
 
-// used with EmitSound_t
-enum gender_t : uint8
+#pragma pack(push, 1)
+struct StartSoundEventInfo
 {
-	GENDER_NONE = 0x0,
-	GENDER_MALE = 0x1,
-	GENDER_FEMALE = 0x2,
-	GENDER_NAMVET = 0x3,
-	GENDER_TEENGIRL = 0x4,
-	GENDER_BIKER = 0x5,
-	GENDER_MANAGER = 0x6,
-	GENDER_GAMBLER = 0x7,
-	GENDER_PRODUCER = 0x8,
-	GENDER_COACH = 0x9,
-	GENDER_MECHANIC = 0xA,
-	GENDER_CEDA = 0xB,
-	GENDER_CRAWLER = 0xC,
-	GENDER_UNDISTRACTABLE = 0xD,
-	GENDER_FALLEN = 0xE,
-	GENDER_RIOT_CONTROL = 0xF,
-	GENDER_CLOWN = 0x10,
-	GENDER_JIMMY = 0x11,
-	GENDER_HOSPITAL_PATIENT = 0x12,
-	GENDER_BRIDE = 0x13,
-	GENDER_LAST = 0x14,
+	SndOpEventGuid_t m_nSndOpEventGuid;
+	int32 m_nFlags;
+	uint64 m_nRecipients;
 };
-
-struct EmitSound_t
-{
-	EmitSound_t() :
-		m_nChannel(0),
-		m_pSoundName(0),
-		m_flVolume(VOL_NORM),
-		m_SoundLevel(SNDLVL_NONE),
-		m_nFlags(0),
-		m_nPitch(PITCH_NORM),
-		m_pOrigin(0),
-		m_flSoundTime(0.0f),
-		m_pflSoundDuration(0),
-		m_bEmitCloseCaption(true),
-		m_bWarnOnMissingCloseCaption(false),
-		m_bWarnOnDirectWaveReference(false),
-		m_nSpeakerEntity(-1),
-		m_UtlVecSoundOrigin(),
-		m_nForceGuid(0),
-		m_SpeakerGender(GENDER_NONE)
-	{
-	}
-	int m_nChannel;
-	const char* m_pSoundName;
-	float m_flVolume;
-	soundlevel_t m_SoundLevel;
-	int m_nFlags;
-	int m_nPitch;
-	const Vector* m_pOrigin;
-	float m_flSoundTime;
-	float* m_pflSoundDuration;
-	bool m_bEmitCloseCaption;
-	bool m_bWarnOnMissingCloseCaption;
-	bool m_bWarnOnDirectWaveReference;
-	CEntityIndex m_nSpeakerEntity;
-	CUtlVector<Vector, CUtlMemory<Vector, int> > m_UtlVecSoundOrigin;
-	SoundEventGuid_t m_nForceGuid;
-	gender_t m_SpeakerGender;
-};
-
-class CNetworkTransmitComponent
-{
-public:
-	DECLARE_SCHEMA_CLASS_INLINE(CNetworkTransmitComponent)
-};
+#pragma pack(pop)
+static_assert(sizeof(StartSoundEventInfo) == 20); // Ensure alignment change works
 
 class CNetworkVelocityVector
 {
@@ -215,7 +117,7 @@ public:
 class CGlowProperty
 {
 public:
-	DECLARE_SCHEMA_CLASS_INLINE(CGlowProperty)
+	DECLARE_SCHEMA_CLASS_BASE(CGlowProperty, 4)
 
 	SCHEMA_FIELD(Vector, m_fGlowColor)
 	SCHEMA_FIELD(int, m_iGlowType)
@@ -224,5 +126,8 @@ public:
 	SCHEMA_FIELD(int, m_nGlowRangeMin)
 	SCHEMA_FIELD(Color, m_glowColorOverride)
 	SCHEMA_FIELD(bool, m_bFlashing)
+	SCHEMA_FIELD(float, m_flGlowTime)
+	SCHEMA_FIELD(float, m_flGlowStartTime)
+	SCHEMA_FIELD(bool, m_bEligibleForScreenHighlight)
 	SCHEMA_FIELD(bool, m_bGlowing)
 };

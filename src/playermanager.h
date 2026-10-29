@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -18,16 +18,24 @@
  */
 
 #pragma once
-#include "bitvec.h"
 #include "common.h"
 #include "entity/cparticlesystem.h"
+#include "entity/cpointorient.h"
+#include "entity/cpointworldtext.h"
+#include "entity/customplayercamera.h"
 #include "entity/lights.h"
 #include "gamesystem.h"
+#include "in_buttons.h"
 #include "steam/isteamuser.h"
 #include "steam/steam_api_common.h"
 #include "steam/steamclientpublic.h"
-#include "utlvector.h"
+#include "tier0/bitvec.h"
+#include "tier0/utlvector.h"
 #include <playerslot.h>
+
+extern CConVar<bool> g_cvarFlashLightTransmitOthers;
+extern CConVar<CUtlString> g_cvarFlashLightAttachment;
+extern CConVar<bool> g_cvarEnableMapSteamIds;
 
 #define NO_TARGET_BLOCKS (0)
 #define NO_RANDOM (1 << 1)
@@ -48,9 +56,11 @@
 #define SOUND_STATUS_PREF_KEY_NAME "sound_status"
 #define NO_SHAKE_PREF_KEY_NAME "no_shake"
 #define BUTTON_WATCH_PREF_KEY_NAME "button_watch"
+#define ZSOUNDS_PREF_KEY_NAME "zsounds"
 #define INVALID_ZEPLAYERHANDLE_INDEX 0u
 
 static uint32 iZEPlayerHandleSerial = 0u; // this should actually be 3 bytes large, but no way enough players join in servers lifespan for this to be an issue
+static constexpr float THIRD_PERSON_CAMERA_MARKER = 0.001337f;
 
 enum class ETargetType
 {
@@ -104,6 +114,7 @@ enum class ETargetError
 class ZEPlayer;
 struct ZRClass;
 struct ZRModelEntry;
+enum class EZSoundsType;
 
 class ZEPlayerHandle
 {
@@ -154,10 +165,12 @@ public:
 		m_SteamID = nullptr;
 		m_bGagged = false;
 		m_bMuted = false;
+		m_bEbanned = false;
 		m_iHideDistance = 0;
 		m_bConnected = false;
 		m_iTotalDamage = 0;
 		m_iTotalHits = 0;
+		m_iTotalHeadshots = 0;
 		m_iTotalKills = 0;
 		m_bVotedRTV = false;
 		m_bVotedExtend = false;
@@ -184,6 +197,15 @@ public:
 		m_pActiveZRClass = nullptr;
 		m_pActiveZRModel = nullptr;
 		m_iButtonWatchMode = 0;
+		m_iEntwatchHudMode = 0;
+		m_colorEntwatchHud = Color(255, 255, 255, 255);
+		m_flEntwatchHudX = -7.5f;
+		m_flEntwatchHudY = -2.0f;
+		m_flEntwatchHudSize = 60.0f;
+		m_bTopDefender = false;
+		m_flLastVoiceTime = -15.0f;
+		m_flBeaconEnabledTime = -2.0f;
+		m_bOriginalClanTagSaved = false;
 	}
 
 	~ZEPlayer()
@@ -212,11 +234,13 @@ public:
 	void SetPlayerSlot(CPlayerSlot slot) { m_slot = slot; }
 	void SetMuted(bool muted) { m_bMuted = muted; }
 	void SetGagged(bool gagged) { m_bGagged = gagged; }
+	void SetEbanned(bool ebanned) { m_bEbanned = ebanned; }
 	void SetTransmit(int index, bool shouldTransmit) { shouldTransmit ? m_shouldTransmit.Set(index) : m_shouldTransmit.Clear(index); }
 	void ClearTransmit() { m_shouldTransmit.ClearAll(); }
 	void SetHideDistance(int distance);
 	void SetTotalDamage(int damage) { m_iTotalDamage = damage; }
 	void SetTotalHits(int hits) { m_iTotalHits = hits; }
+	void SetTotalHeadshots(int headshots) { m_iTotalHeadshots = headshots; }
 	void SetTotalKills(int kills) { m_iTotalKills = kills; }
 	void SetRTVVote(bool bRTVVote) { m_bVotedRTV = bRTVVote; }
 	void SetRTVVoteTime(float flCurtime) { m_flRTVVoteTime = flCurtime; }
@@ -241,21 +265,37 @@ public:
 	void SetSpeedMod(float flSpeedMod) { m_flSpeedMod = flSpeedMod; }
 	void SetLastInputs(uint64 iLastInputs) { m_iLastInputs = iLastInputs; }
 	void UpdateLastInputTime() { m_iLastInputTime = std::time(0); }
-	void SetMaxSpeed(float flMaxSpeed) { m_flMaxSpeed = flMaxSpeed; }
+	void SetMaxSpeed(float flMaxSpeed) { m_flMaxSpeed = flMaxSpeed; } // BROKEN ON WINDOWS
 	void CycleButtonWatch();
 	void ReplicateConVar(const char* pszName, const char* pszValue);
 	void SetActiveZRClass(std::shared_ptr<ZRClass> pZRModel) { m_pActiveZRClass = pZRModel; }
 	void SetActiveZRModel(std::shared_ptr<ZRModelEntry> pZRClass) { m_pActiveZRModel = pZRClass; }
+	void SetEntwatchHudMode(int iMode);
+	void SetPointOrient(CPointOrient* pOrient) { m_hPointOrient.Set(pOrient); }
+	void SetEntwatchHud(CPointWorldText* pWorldText) { m_hEntwatchHud.Set(pWorldText); }
+	void SetEntwatchHudColor(Color colorHud);
+	void SetEntwatchHudPos(float x, float y);
+	void SetEntwatchHudSize(float flSize);
+	void SetTopDefenderStatus(bool bStatus) { m_bTopDefender = bStatus; }
+	void SetLastVoiceTime(float flTime) { m_flLastVoiceTime = flTime; }
+	void SetBeaconEnabledTime(float flTime) { m_flBeaconEnabledTime = flTime; }
+	void SetOriginalClanTag(std::string strClanTag)
+	{
+		m_strOriginalClanTag = strClanTag;
+		m_bOriginalClanTagSaved = true;
+	}
 
 	uint64 GetAdminFlags() { return m_iAdminFlags; }
 	int GetAdminImmunity() { return m_iAdminImmunity; }
 	bool IsMuted() { return m_bMuted; }
 	bool IsGagged() { return m_bGagged; }
+	bool IsEbanned() { return m_bEbanned; }
 	bool ShouldBlockTransmit(int index) { return m_shouldTransmit.Get(index); }
 	int GetHideDistance();
 	CPlayerSlot GetPlayerSlot() { return m_slot; }
 	int GetTotalDamage() { return m_iTotalDamage; }
 	int GetTotalHits() { return m_iTotalHits; }
+	int GetTotalHeadshots() { return m_iTotalHeadshots; }
 	int GetTotalKills() { return m_iTotalKills; }
 	bool GetRTVVote() { return m_bVotedRTV; }
 	float GetRTVVoteTime() { return m_flRTVVoteTime; }
@@ -286,6 +326,18 @@ public:
 	std::shared_ptr<ZRClass> GetActiveZRClass() { return m_pActiveZRClass; }
 	std::shared_ptr<ZRModelEntry> GetActiveZRModel() { return m_pActiveZRModel; }
 	int GetButtonWatchMode();
+	int GetEntwatchHudMode();
+	CPointOrient* GetPointOrient() { return m_hPointOrient.Get(); }
+	CPointWorldText* GetEntwatchHud() { return m_hEntwatchHud.Get(); }
+	Color GetEntwatchHudColor() { return m_colorEntwatchHud; }
+	float GetEntwatchHudX() { return m_flEntwatchHudX; }
+	float GetEntwatchHudY() { return m_flEntwatchHudY; }
+	float GetEntwatchHudSize() { return m_flEntwatchHudSize; }
+	bool GetTopDefenderStatus() { return m_bTopDefender; }
+	float GetLastVoiceTime() { return m_flLastVoiceTime; }
+	float GetBeaconEnabledTime() { return m_flBeaconEnabledTime; }
+	std::string GetOriginalClanTag() { return m_strOriginalClanTag; }
+	bool IsOriginalClanTagSaved() { return m_bOriginalClanTagSaved; }
 
 	void OnSpawn();
 	void OnAuthenticated();
@@ -300,6 +352,9 @@ public:
 	void StartGlow(Color color, int duration);
 	void EndGlow();
 	void SetSteamIdAttribute();
+	void CreateEntwatchHud();
+	void CreatePointOrient();
+	void ToggleThirdPerson(float flDistance = -65.f, bool bForce = false);
 
 private:
 	bool m_bAuthenticated;
@@ -310,12 +365,14 @@ private:
 	bool m_bFakeClient;
 	bool m_bMuted;
 	bool m_bGagged;
+	bool m_bEbanned;
 	uint64 m_iAdminFlags;
 	int m_iAdminImmunity;
 	int m_iHideDistance;
-	CBitVec<MAXPLAYERS> m_shouldTransmit;
+	CBitVec<MAX_PLAYERS> m_shouldTransmit;
 	int m_iTotalDamage;
 	int m_iTotalHits;
+	int m_iTotalHeadshots;
 	int m_iTotalKills;
 	bool m_bVotedRTV;
 	float m_flRTVVoteTime;
@@ -338,7 +395,7 @@ private:
 	Color m_colorTracer;
 	Color m_colorGlow;
 	Color m_colorBeacon;
-	CUtlVector<ZEPlayerHandle> m_vecLeaderVotes;
+	std::vector<ZEPlayerHandle> m_vecLeaderVotes;
 	float m_flLeaderVoteTime;
 	CHandle<CBaseModelEntity> m_hGlowModel;
 	float m_flSpeedMod;
@@ -348,21 +405,33 @@ private:
 	std::shared_ptr<ZRClass> m_pActiveZRClass;
 	std::shared_ptr<ZRModelEntry> m_pActiveZRModel;
 	int m_iButtonWatchMode;
+	CHandle<CPointOrient> m_hPointOrient;
+	CHandle<CPointWorldText> m_hEntwatchHud;
+	CHandle<CCSCustomPlayerCamera> m_hCustomCamera;
+	int m_iEntwatchHudMode;
+	Color m_colorEntwatchHud;
+	float m_flEntwatchHudX;
+	float m_flEntwatchHudY;
+	float m_flEntwatchHudSize;
+	bool m_bTopDefender;
+	float m_flLastVoiceTime;
+	float m_flBeaconEnabledTime;
+	std::string m_strOriginalClanTag;
+	bool m_bOriginalClanTagSaved;
 };
 
 class CPlayerManager
 {
 public:
-	CPlayerManager(bool late = false)
+	CPlayerManager()
 	{
 		V_memset(m_vecPlayers, 0, sizeof(m_vecPlayers));
 		m_nUsingStopSound = -1; // On by default
 		m_nUsingSilenceSound = 0;
-		m_nUsingStopDecals = -1; // On by default
+		m_nUsingZSounds = -1;		// On by default
+		m_nUsingZSoundsInfect = -1; // On by default
+		m_nUsingStopDecals = -1;	// On by default
 		m_nUsingNoShake = 0;
-
-		if (late)
-			OnLateLoad();
 	}
 
 	bool OnClientConnected(CPlayerSlot slot, uint64 xuid, const char* pszNetworkID);
@@ -371,6 +440,7 @@ public:
 	void OnClientPutInServer(CPlayerSlot slot);
 	void OnLateLoad();
 	void OnSteamAPIActivated();
+	bool IsUsingThirdPerson(CCSPlayerPawn* pPawn);
 	void CheckInfractions();
 	void FlashLightThink();
 	void CheckHideDistances();
@@ -388,11 +458,14 @@ public:
 
 	uint64 GetStopSoundMask() { return m_nUsingStopSound; }
 	uint64 GetSilenceSoundMask() { return m_nUsingSilenceSound; }
+	uint64 GetZSoundsMask() { return m_nUsingZSounds; }
+	uint64 GetZSoundsInfectMask() { return m_nUsingZSoundsInfect; }
 	uint64 GetStopDecalsMask() { return m_nUsingStopDecals; }
 	uint64 GetNoShakeMask() { return m_nUsingNoShake; }
 
 	void SetPlayerStopSound(int slot, bool set);
 	void SetPlayerSilenceSound(int slot, bool set);
+	void SetPlayerZSounds(int slot, EZSoundsType mode);
 	void SetPlayerStopDecals(int slot, bool set);
 	void SetPlayerNoShake(int slot, bool set);
 
@@ -400,19 +473,23 @@ public:
 
 	bool IsPlayerUsingStopSound(int slot) { return m_nUsingStopSound & ((uint64)1 << slot); }
 	bool IsPlayerUsingSilenceSound(int slot) { return m_nUsingSilenceSound & ((uint64)1 << slot); }
+	EZSoundsType GetPlayerZSoundsMode(int slot);
 	bool IsPlayerUsingStopDecals(int slot) { return m_nUsingStopDecals & ((uint64)1 << slot); }
 	bool IsPlayerUsingNoShake(int slot) { return m_nUsingNoShake & ((uint64)1 << slot); }
 
 	void UpdatePlayerStates();
 	int GetOnlinePlayerCount(bool bCountBots);
+	void FullUpdateAllClients();
 
 	STEAM_GAMESERVER_CALLBACK_MANUAL(CPlayerManager, OnValidateAuthTicket, ValidateAuthTicketResponse_t, m_CallbackValidateAuthTicketResponse);
 
 private:
-	ZEPlayer* m_vecPlayers[MAXPLAYERS];
+	ZEPlayer* m_vecPlayers[MAX_PLAYERS];
 
 	uint64 m_nUsingStopSound;
 	uint64 m_nUsingSilenceSound;
+	uint64 m_nUsingZSounds;
+	uint64 m_nUsingZSoundsInfect;
 	uint64 m_nUsingStopDecals;
 	uint64 m_nUsingNoShake;
 };

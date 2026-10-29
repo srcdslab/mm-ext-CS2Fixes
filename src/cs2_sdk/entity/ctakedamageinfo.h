@@ -1,7 +1,7 @@
-/**
+﻿/**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -19,53 +19,9 @@
 
 #pragma once
 #include "ehandle.h"
+#include "gametrace.h"
+#include "shareddefs.h"
 #include <platform.h>
-
-enum DamageTypes_t : uint32_t
-{
-	DMG_GENERIC = 0x0,
-	DMG_CRUSH = 0x1,
-	DMG_BULLET = 0x2,
-	DMG_SLASH = 0x4,
-	DMG_BURN = 0x8,
-	DMG_VEHICLE = 0x10,
-	DMG_FALL = 0x20,
-	DMG_BLAST = 0x40,
-	DMG_CLUB = 0x80,
-	DMG_SHOCK = 0x100,
-	DMG_SONIC = 0x200,
-	DMG_ENERGYBEAM = 0x400,
-	DMG_DROWN = 0x4000,
-	DMG_POISON = 0x8000,
-	DMG_RADIATION = 0x10000,
-	DMG_DROWNRECOVER = 0x20000,
-	DMG_ACID = 0x40000,
-	DMG_PHYSGUN = 0x100000,
-	DMG_DISSOLVE = 0x200000,
-	DMG_BLAST_SURFACE = 0x400000,
-	DMG_BUCKSHOT = 0x1000000,
-	DMG_LASTGENERICFLAG = 0x1000000,
-	DMG_HEADSHOT = 0x2000000,
-	DMG_DANGERZONE = 0x4000000,
-};
-
-enum TakeDamageFlags_t : uint32_t
-{
-	DFLAG_NONE = 0x0,
-	DFLAG_SUPPRESS_HEALTH_CHANGES = 0x1,
-	DFLAG_SUPPRESS_PHYSICS_FORCE = 0x2,
-	DFLAG_SUPPRESS_EFFECTS = 0x4,
-	DFLAG_PREVENT_DEATH = 0x8,
-	DFLAG_FORCE_DEATH = 0x10,
-	DFLAG_ALWAYS_GIB = 0x20,
-	DFLAG_NEVER_GIB = 0x40,
-	DFLAG_REMOVE_NO_RAGDOLL = 0x80,
-	DFLAG_SUPPRESS_DAMAGE_MODIFICATION = 0x100,
-	DFLAG_ALWAYS_FIRE_DAMAGE_EVENTS = 0x200,
-	DFLAG_RADIUS_DMG = 0x400,
-	DMG_LASTDFLAG = 0x400,
-	DFLAG_IGNORE_ARMOR = 0x800,
-};
 
 struct AttackerInfo_t
 {
@@ -73,16 +29,13 @@ struct AttackerInfo_t
 	bool m_bIsPawn;
 	bool m_bIsWorld;
 	CHandle<CCSPlayerPawn> m_hAttackerPawn;
-	uint16_t m_nAttackerPlayerSlot;
+	int32_t m_nAttackerPlayerSlot;
 	int m_iTeamChecked;
 	int m_nTeam;
 };
+static_assert(sizeof(AttackerInfo_t) == 20);
 
-// No idea what this is meant to have, but OnTakeDamage_Alive expects this and we only care about pInfo
-struct CTakeDamageInfoContainer
-{
-	CTakeDamageInfo* pInfo;
-};
+class CGameTrace;
 
 class CTakeDamageInfo
 {
@@ -90,60 +43,116 @@ private:
 	[[maybe_unused]] uint8_t __pad0000[0x8];
 
 public:
+	DECLARE_SCHEMA_CLASS(CTakeDamageInfo)
+
 	CTakeDamageInfo()
 	{
-		addresses::CTakeDamageInfo_Constructor(this, nullptr, nullptr, nullptr, &vec3_origin, &vec3_origin, 0.f, 0, 0, nullptr);
+		Construct();
 	}
 
 	CTakeDamageInfo(CBaseEntity* pInflictor, CBaseEntity* pAttacker, CBaseEntity* pAbility, float flDamage, DamageTypes_t bitsDamageType)
 	{
-		addresses::CTakeDamageInfo_Constructor(this, pInflictor, pAttacker, pAbility, &vec3_origin, &vec3_origin, flDamage, bitsDamageType, 0, nullptr);
+		Construct();
+		m_hInflictor = pInflictor;
+		m_hAttacker = pAttacker;
+		m_hAbility = pAbility;
+		m_flDamage = flDamage;
+		m_bitsDamageType = bitsDamageType;
 	}
 
-	Vector m_vecDamageForce;
-	Vector m_vecDamagePosition;
-	Vector m_vecReportedPosition;
-	Vector m_vecDamageDirection;
-	CHandle<CBaseEntity> m_hInflictor;
-	CHandle<CBaseEntity> m_hAttacker;
-	CHandle<CBaseEntity> m_hAbility;
-	float m_flDamage;
-	float m_flTotalledDamage;
-	float m_flTotalledDamageAbsorbed;
-	DamageTypes_t m_bitsDamageType;
-	int32_t m_iDamageCustom;
-	uint8_t m_iAmmoType;
+	Vector m_vecDamageForce;		   // 0x8  |  8
+	Vector m_vecDamagePosition;		   // 0x14 | 20
+	Vector m_vecReportedPosition;	   // 0x20 | 32
+	Vector m_vecDamageDirection;	   // 0x2c | 44
+	CHandle<CBaseEntity> m_hInflictor; // 0x38 | 56
+	CHandle<CBaseEntity> m_hAttacker;  // 0x3c | 60
+	CHandle<CBaseEntity> m_hAbility;   // 0x40 | 64
+	float m_flDamage;				   // 0x44 | 68
+	float m_flTotalledDamage;		   // 0x48 | 72
+	int32_t m_bitsDamageType;		   // 0x4c | 76
+	int32_t m_iDamageCustom;		   // 0x50 | 80
+	int8_t m_iAmmoType;				   // 0x54 | 84
 
 private:
-	[[maybe_unused]] uint8_t __pad0059[0xf];
+	[[maybe_unused]] uint8_t m_nUnknown0[0xb]; // 0x55 | 85
 
 public:
-	float m_flOriginalDamage;
-	bool m_bShouldBleed;
-	bool m_bShouldSpark;
+	float m_flOriginalDamage; // 0x60 | 96
+	bool m_bShouldBleed;	  // 0x64 | 100
+	bool m_bShouldSpark;	  // 0x65 | 101
 
 private:
-	[[maybe_unused]] uint8_t __pad006e[0x2];
+	[[maybe_unused]] uint8_t m_nUnknown1[0x2]; // 0x66
 
 public:
-	float m_flDamageAbsorbed;
+	CGameTrace* m_pTrace;						// 0x68 | 104
+	TakeDamageFlags_t m_nDamageFlags;			// 0x70 | 112
+	HitGroup_t m_iHitGroupId;					// 0x78 | 120
+	int32_t m_nNumObjectsPenetrated;			// 0x7c | 124
+	float m_flFriendlyFireDamageReductionRatio; // 0x80 | 128
+	bool m_bStoppedBullet;						// 0x84 | 132
 
 private:
-	[[maybe_unused]] uint8_t __pad0074[0x8];
+	uint8_t m_nUnknown2[0x58]; // 0x88 | 136
 
 public:
-	TakeDamageFlags_t m_nDamageFlags;
+	void* m_hScriptInstance;							// 0xe0 | 224
+	AttackerInfo_t m_AttackerInfo;						// 0xe8 | 232
+	CUtlLeanVector<int> m_DestructibleHitGroupRequests; // 0x100 | 256   CUtlLeanVector<DestructiblePartDamageRequest_t>
+	bool m_bInTakeDamageFlow;							// 0x110 | 272
 
 private:
-	[[maybe_unused]] uint8_t __pad0084[0x4];
-
-public:
-	int32_t m_nNumObjectsPenetrated;
-	float m_flFriendlyFireDamageReductionRatio;
-	uint64_t m_hScriptInstance;
-	AttackerInfo_t m_AttackerInfo;
-	bool m_bInTakeDamageFlow;
-
-private:
-	[[maybe_unused]] uint8_t __pad00ad[0x4];
+	[[maybe_unused]] int32_t m_nUnknown4; // 0x11c | 284
 };
+static_assert(sizeof(CTakeDamageInfo) == 280);
+
+struct CTakeDamageResult
+{
+public:
+	CTakeDamageInfo* m_pOriginatingInfo;
+	CUtlLeanVector<int> m_DestructibleHitGroupRequests; // CUtlLeanVector<DestructiblePartDamageRequest_t>
+	int32_t m_nHealthLost;
+	int32_t m_nHealthBefore;
+	float m_flDamageDealt;
+	float m_flPreModifiedDamage;
+	VectorWS m_vDamagePosition;
+	int32_t m_nTotalledHealthLost;
+	float m_flTotalledDamageDealt;
+	float m_flTotalledPreModifiedDamage;
+	float m_flNewDamageAccumulatorValue;
+	TakeDamageFlags_t m_nDamageFlags;
+	bool m_bWasDamageSuppressed;
+	bool m_bSuppressFlinch;
+	HitGroup_t m_nOverrideFlinchHitGroup;
+
+private:
+	[[maybe_unused]] uint8_t m_nUnknown0[0x8];
+
+public:
+	void CopyFrom(CTakeDamageInfo* pInfo)
+	{
+		m_pOriginatingInfo = pInfo;
+		m_nHealthLost = static_cast<int32_t>(pInfo->m_flDamage);
+		m_nHealthBefore = 0;
+		m_flDamageDealt = pInfo->m_flDamage;
+		m_flPreModifiedDamage = pInfo->m_flDamage;
+		m_nTotalledHealthLost = static_cast<int32_t>(pInfo->m_flDamage);
+		m_flTotalledDamageDealt = pInfo->m_flDamage;
+		m_bWasDamageSuppressed = false;
+	}
+
+	CTakeDamageResult() = delete;
+
+	CTakeDamageResult(float damage) :
+		m_pOriginatingInfo(nullptr),
+		m_nHealthLost(static_cast<int32_t>(damage)),
+		m_nHealthBefore(0),
+		m_flDamageDealt(damage),
+		m_flPreModifiedDamage(damage),
+		m_nTotalledHealthLost(static_cast<int32_t>(damage)),
+		m_flTotalledDamageDealt(damage),
+		m_bWasDamageSuppressed(false)
+	{
+	}
+};
+static_assert(sizeof(CTakeDamageResult) == 96);

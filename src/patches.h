@@ -1,6 +1,8 @@
 #pragma once
 
-#include "gameconfig.h"
+#include "mempatch.h"
 
-bool InitPatches(CGameConfig* gameConfig);
+extern CMemPatch g_CommonPatches[];
+
+bool InitPatches();
 void UndoPatches();

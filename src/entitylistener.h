@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -18,14 +18,14 @@
  */
 
 #pragma once
-#include "entitysystem.h"
+#include "gameentitysystem.h"
 
-extern CGameEntitySystem* g_pEntitySystem;
-
-class CEntityListener : public IEntityListener
+class CEntityListener final : public IEntityListener
 {
 	void OnEntitySpawned(CEntityInstance* pEntity) override;
 	void OnEntityCreated(CEntityInstance* pEntity) override;
 	void OnEntityDeleted(CEntityInstance* pEntity) override;
 	void OnEntityParentChanged(CEntityInstance* pEntity, CEntityInstance* pNewParent) override;
 };
+
+extern CEntityListener* g_pEntityListener;

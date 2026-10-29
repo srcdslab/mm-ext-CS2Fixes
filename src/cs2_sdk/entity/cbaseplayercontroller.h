@@ -1,7 +1,7 @@
 /**
  * =============================================================================
  * CS2Fixes
- * Copyright (C) 2023-2025 Source2ZE
+ * Copyright (C) 2023-2026 Source2ZE
  * =============================================================================
  *
  * This program is free software; you can redistribute it and/or modify it under
@@ -41,7 +41,7 @@ public:
 
 	SCHEMA_FIELD(uint64, m_steamID)
 	SCHEMA_FIELD(CHandle<CBasePlayerPawn>, m_hPawn)
-	SCHEMA_FIELD_POINTER(char, m_iszPlayerName)
+	SCHEMA_FIELD_POINTER(char, m_iszPlayerName) // char m_iszPlayerName[128]
 	SCHEMA_FIELD(PlayerConnectedState, m_iConnected)
 	SCHEMA_FIELD(bool, m_bIsHLTV)
 	SCHEMA_FIELD(uint, m_iDesiredFOV)
@@ -56,6 +56,6 @@ public:
 	bool IsConnected() { return m_iConnected() == PlayerConnectedState::PlayerConnected; }
 	void SetPawn(CCSPlayerPawn* pawn)
 	{
-		addresses::CBasePlayerController_SetPawn(this, pawn, true, false, false);
+		addresses::CBasePlayerController_SetPawn(this, pawn, true, false, false, false);
 	}
 };
